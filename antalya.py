@@ -1,5 +1,6 @@
 """Refresh the first page of Antalya's public municipal calendar."""
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,26 +44,18 @@ def collect():
 
         page.on("response", capture)
         page.goto(SOURCE, wait_until="domcontentloaded", timeout=90000)
-        for _ in range(60):
+        for _ in range(30):
             page.wait_for_timeout(1000)
             if events:
                 break
         if not events:
-            cards = page.locator("[ng-bind*='baslik'], [data-ng-bind*='baslik'], h6")
-            for card in cards.all():
-                row = card.evaluate("""el => {
-                    if (!window.angular) return null;
-                    const scope = angular.element(el).scope();
-                    const item = scope && scope.item;
-                    if (!item || !item.baslik) return null;
-                    const details = item.custominclude || {};
-                    return {title:item.baslik, start:details.StartDate, venue:item.mekan || null};
-                }""")
-                if row and row.get("start"):
-                    row.update(city="Antalya", source=SOURCE)
-                    events[(row["title"], str(row["start"]))] = row
-        if not events:
-            print("Calendar page:", page.title(), page.locator("body").inner_text()[-2400:])
+            months = "Ocak Şubat Mart Nisan Mayıs Haziran Temmuz Ağustos Eylül Ekim Kasım Aralık".split()
+            text = page.locator("body").inner_text()
+            pattern = r"(?m)^\s*(?:Pazartesi|Salı|Çarşamba|Perşembe|Cuma|Cumartesi|Pazar),\s*(\d{1,2}) (\w+) (\d{4})\s*\n\s*([^\n]+)"
+            for day, month, year, title in re.findall(pattern, text):
+                if month in months and title.strip():
+                    start = f"{year}-{months.index(month) + 1:02d}-{int(day):02d}"
+                    events[(title, start)] = dict(title=title.strip(), start=start, city="Antalya", venue=None, source=SOURCE)
         browser.close()
     if not events:
         raise RuntimeError("Takvimden doğrulanabilir etkinlik alınamadı. Önceki dosya korundu.")
