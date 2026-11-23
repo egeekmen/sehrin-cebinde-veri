@@ -47,6 +47,22 @@ def collect():
             page.wait_for_timeout(1000)
             if events:
                 break
+        if not events:
+            cards = page.locator("[ng-bind*='baslik'], [data-ng-bind*='baslik'], h6")
+            for card in cards.all():
+                row = card.evaluate("""el => {
+                    if (!window.angular) return null;
+                    const scope = angular.element(el).scope();
+                    const item = scope && scope.item;
+                    if (!item || !item.baslik) return null;
+                    const details = item.custominclude || {};
+                    return {title:item.baslik, start:details.StartDate, venue:item.mekan || null};
+                }""")
+                if row and row.get("start"):
+                    row.update(city="Antalya", source=SOURCE)
+                    events[(row["title"], str(row["start"]))] = row
+        if not events:
+            print("Calendar page:", page.title(), page.locator("body").inner_text()[-2400:])
         browser.close()
     if not events:
         raise RuntimeError("Takvimden doğrulanabilir etkinlik alınamadı. Önceki dosya korundu.")
